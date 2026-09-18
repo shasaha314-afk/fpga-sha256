@@ -32,23 +32,6 @@ The design is decomposed into five Verilog modules that map directly onto the ro
 
 Each 512-bit message block is processed in **68 clock cycles**, giving a throughput of ≈738 Mbit/s for back-to-back blocks at 98 MHz.
 
-## Repository Structure
-
-```
-.
-├── rtl/                    # Verilog RTL source
-│   ├── sha256_functions.v
-│   ├── sha256_schedule.v
-│   ├── sha256_round.v
-│   ├── sha256_core.v
-│   └── sha256_top.v
-├── sim/                    # Testbenches and simulation scripts
-├── matlab/                 # MATLAB behavioural (golden reference) model
-├── constraints/            # XDC constraints (Zybo Z7-10, 98 MHz clock on K17)
-├── vivado/                 # Vivado project files / build scripts
-├── docs/                   # Paper, figures, waveform captures
-└── README.md
-```
 
 ## Getting Started
 
@@ -58,14 +41,14 @@ Each 512-bit message block is processed in **68 clock cycles**, giving a through
 - MATLAB (optional, for re-running the behavioural golden-reference model)
 
 ### Build & Program
-1. Open Vivado and create/import the project using the sources in `rtl/` and constraints in `constraints/`.
+1. Open Vivado and create/import the project using the sources and constraints.
 2. Run Synthesis → Implementation → Generate Bitstream.
 3. Program the Zybo Z7-10 over JTAG using the Vivado Hardware Manager.
 4. Use the onboard push-button to trigger a hash computation; the least-significant nibble of the digest is shown on LEDs LD0–LD3.
 5. (Optional) Attach the Vivado ILA to `digest_o`, `done_o`, `ready_o`, and `block_valid_i` to capture the full 256-bit digest on-chip.
 
 ### Simulation
-Run the provided testbench(es) in `sim/` against the five NIST FIPS 180-4 known-answer test vectors plus any custom strings. All vectors should report `PASS`.
+Run the provided testbench against the five NIST FIPS 180-4 known-answer test vectors plus any custom strings. All vectors should report `PASS`.
 
 ## Verification Summary
 
