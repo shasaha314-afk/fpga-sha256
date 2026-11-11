@@ -1,0 +1,21 @@
+# Simulator build output
+obj_dir/
+sim/obj_dir/
+sim/work_questa/
+sim/simv
+sim/simv.daidir/
+sim/csrc/
+sim/xcelium.d/
+sim/xrun.*
+sim/*.log
+
+# Waveforms / coverage databases
+*.vcd
+*.fst
+*.wlf
+*.ucdb
+*.shm/
+*.fsdb
+
+# Regression output (regenerate with scripts/run_regression.py)
+results/

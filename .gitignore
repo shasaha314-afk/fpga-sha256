@@ -1,0 +1,25 @@
+# Vivado files
+*.log
+*.jou
+*.str
+*.pb
+*.wdb
+*.dcp
+.Xil/
+xsim.dir/
+*.sim/
+*.hw/
+*.ip_user_files/
+*.runs/
+*.cache/
+
+# OS / Editor artifacts
+.DS_Store
+Thumbs.db
+*.swp
+*~
+.vscode/
+
+# Simulator outputs
+obj_dir/
+*.vcd

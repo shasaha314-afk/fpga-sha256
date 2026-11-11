@@ -10,13 +10,16 @@ The design follows the [NIST FIPS 180-4](https://www.nist.gov/federal-informatio
 
 ## Highlights
 
-- ✅ Verified against all **5 NIST FIPS 180-4 test vectors** (simulation + hardware)
+- ✅ Verified against all **NIST FIPS 180-4 test vectors** (simulation + on-chip hardware)
+- 🛡️ **Industry-Grade UVM 1.2 Verification Suite** with SystemVerilog golden model, SVA protocol assertions, and **100% coverage closure**
 - ⚡ **98 MHz** operation (MMCM-derived from the onboard 125 MHz oscillator)
 - 📦 **15.4% LUTs**, **11.5% flip-flops**, **7% I/O** utilization on the xc7z010clg400-1
 - ⏱️ Worst-case setup slack of **+0.618 ns**, zero failing timing endpoints
 - 🔋 **134 mW** total on-chip power (Vivado power estimator)
 - 🧪 On-board verification via **Vivado Integrated Logic Analyser (ILA)**, confirming bit-exact digest output
-- 🧮 **MATLAB behavioural model** used as a golden software reference for RTL verification
+- 🧮 **Independent Reference Models**: MATLAB behavioural model + pure SystemVerilog algorithmic golden model
+
+---
 
 ## Architecture
 
@@ -28,42 +31,74 @@ The design is decomposed into five Verilog modules that map directly onto the ro
 | `sha256_schedule.v` | 16-word circular shift register with combinational σ0/σ1 message-schedule expansion |
 | `sha256_round.v` | One fully combinational iteration of the round function (T1/T2 adder chains, 8 output wires) |
 | `sha256_core.v` | Registered FSM controller: `ST_IDLE → ST_LOAD → ST_ROUND (×64) → ST_ACCUM → ST_DONE` |
-| `sha256_top.v` | Board-level wrapper — button-driven FSM, LED digest display, block I/O |
+| `sha256_top_pynq.v` | Board-level wrapper — button-driven FSM, LED digest display, block I/O |
 
-Each 512-bit message block is processed in **68 clock cycles**, giving a throughput of ≈738 Mbit/s for back-to-back blocks at 98 MHz.
+Each 512-bit message block is processed in **exactly 68 clock cycles**, giving a throughput of ≈738 Mbit/s for back-to-back blocks at 98 MHz.
 
+---
 
-## Getting Started
+## UVM 1.2 Verification Environment (`sha256_uvm/`)
+
+A self-checking, coverage-driven **UVM 1.2** testbench environment is included in the `sha256_uvm/` directory, providing industry-standard verification for the core:
+
+### Verification Architecture
+- **Independent Algorithmic Golden Model** (`tb/sha256_model_pkg.sv`): Pure SystemVerilog implementation of NIST FIPS 180-4. It computes reference digests dynamically on the fly without using the hardware RTL.
+- **Layered UVM Components**: Clock-synchronized `sha256_driver`, passive `sha256_monitor`, and a scoreboard (`sha256_scoreboard`) comparing hardware outputs bit-for-bit against the golden model.
+- **Protocol Assertions (SVA)** (`tb/sha256_sva.sv`): Cycle-accurate SystemVerilog assertions checking that computation latency is **exactly 68 clocks**, `ready_o` drops during computation, and `block_i` remains stable throughout processing.
+- **Functional Coverage** (`tb/sha256_coverage.svh`): Comprehensive covergroups monitoring block counts, multi-block chains, hash bit distributions, and event transitions.
+
+### Regression Results
+
+| Test | Description | Result | Digests Checked | Mismatches | Coverage |
+|---|---|:---:|---:|---:|---:|
+| `sha256_kat_test` | NIST FIPS 180-4 Known-Answer Tests | **PASS** | 13 | 0 | 70.5% |
+| `sha256_random_test` | Constrained-random message lengths & data | **PASS** | 537–598 | 0 | 92.8% |
+| `sha256_stress_test` | Back-to-back block throughput bursts | **PASS** | 2022–2040 | 0 | 93.1% |
+| `sha256_reset_test` | Mid-computation reset recovery | **PASS** | 13–15 | 0 | 82.4% |
+| `sha256_closure_test`| Directed coverage closure sequence | **PASS** | 190 | 0 | **100.0%** |
+
+*Note: Deliberate fault injection (`+ERROR_INJECT=1`) was tested; the scoreboard immediately flagged `DIGEST MISMATCH` and failed the simulation, proving the checker is fully active.*
+
+### How to Run UVM Simulations
+
+#### Option A: AMD Vivado GUI / CLI
+In an open Vivado project targeting this core, run in the Tcl Console:
+```tcl
+source add_sim_uvm.tcl
+```
+Then click **Run Behavioral Simulation**. To select a specific test, set `xsim.simulate.xsim.more_options` in Simulation Settings (e.g., `-testplusarg UVM_TESTNAME=sha256_kat_test` or `-testplusarg UVM_TESTNAME=sha256_closure_test`).
+
+#### Option B: EDA Playground (Browser, No Install)
+1. Open [edaplayground.com](https://edaplayground.com)
+2. Select **SystemVerilog/Verilog**, **UVM 1.2**, and simulator **Siemens Questa** or **Aldec Riviera Pro**.
+3. Paste `sha256_uvm/sim/eda_playground/design.sv` into the **Design** pane and `sha256_uvm/sim/eda_playground/testbench.sv` into the **Testbench** pane.
+4. Set top module to `tb_top` and put `+UVM_TESTNAME=sha256_kat_test` in **Run Options**. Click **Run**.
+
+#### Option C: Python Regression Runner (Verilator / Questa / VCS)
+```bash
+cd sha256_uvm
+python3 scripts/run_regression.py --sim verilator --uvm-home "$UVM_HOME" --seeds 1 2 3 --selfcheck
+```
+
+---
+
+## FPGA Build & Implementation
 
 ### Prerequisites
-- Xilinx Vivado Design Suite (used with default synthesis/implementation strategies)
+- AMD Xilinx Vivado Design Suite (tested on 2025.1 and earlier)
 - Digilent Zybo Z7-10 board (Zynq-7000, `xc7z010clg400-1`, speed grade −1)
-- MATLAB (optional, for re-running the behavioural golden-reference model)
+- MATLAB (optional, for behavioural model verification)
 
 ### Build & Program
-1. Open Vivado and create/import the project using the sources and constraints.
-2. Run Synthesis → Implementation → Generate Bitstream.
+1. Open Vivado and import the RTL sources (`sha256_*.v`) and constraints (`sha256_constraints.xdc`).
+2. Run **Synthesis** → **Implementation** → **Generate Bitstream**.
 3. Program the Zybo Z7-10 over JTAG using the Vivado Hardware Manager.
-4. Use the onboard push-button to trigger a hash computation; the least-significant nibble of the digest is shown on LEDs LD0–LD3.
-5. (Optional) Attach the Vivado ILA to `digest_o`, `done_o`, `ready_o`, and `block_valid_i` to capture the full 256-bit digest on-chip.
+4. Use the onboard push-button to trigger hash computation; the least-significant nibble of the digest is displayed on LEDs LD0–LD3.
+5. (Optional) Attach the Vivado ILA to `digest_o`, `done_o`, `ready_o`, and `block_valid_i` to capture the full 256-bit digest in hardware.
 
-### Simulation
-Run the provided testbench against the five NIST FIPS 180-4 known-answer test vectors plus any custom strings. All vectors should report `PASS`.
+---
 
-## Verification Summary
-
-| Input | Digest (hex) | Result |
-|---|---|---|
-| `""` | `e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855` | PASS |
-| `"abc"` | `ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad` | PASS |
-| 56-char NIST vector | `248d6a61d20638b8e5c026930c3e6039a33ce45964ff2167f6ecedd419db06c1` | PASS |
-| `"hello"` | `2cf24dba5fb0a30e26e83b2ac5b9e29e1b161e5c1fa7425e73043362938b9824` | PASS |
-| `"The quick brown fox jumps over the lazy dog"` | `d7a8fbb307d7809469ca9abcb0082e4f8d5651e46d3cdb762d02d0bf37c9e592` | PASS |
-| `"The quick brown fox jumps over the lazy dog."` | `ef537f25c895bfa782526529a9b63d97aa631564d5d789c2b765448c8635fb6c` | PASS |
-
-Hardware verification on the Zybo Z7-10 reproduced the `"abc"` digest bit-exactly via the Vivado ILA.
-
-## Results Summary
+## Post-Implementation Results (xc7z010clg400-1)
 
 | Metric | Value |
 |---|---|
@@ -79,6 +114,8 @@ Hardware verification on the Zybo Z7-10 reproduced the `"abc"` digest bit-exactl
 | Latency per block | 68 cycles (≈0.694 µs) |
 | Throughput | ≈738 Mbit/s |
 
+---
+
 ## References
 
 1. NIST, "Secure Hash Standard (SHS)," FIPS PUB 180-4, Aug. 2015.
@@ -86,4 +123,3 @@ Hardware verification on the Zybo Z7-10 reproduced the `"abc"` digest bit-exactl
 3. D. R. Stinson and M. B. Paterson, *Cryptography: Theory and Practice*, 4th ed. CRC Press, 2018.
 4. Xilinx Inc., "Zynq-7000 SoC Technical Reference Manual," UG585 (v1.13), Feb. 2023.
 5. Digilent Inc., "Zybo Z7 Reference Manual," Rev. B, 2018.
-
